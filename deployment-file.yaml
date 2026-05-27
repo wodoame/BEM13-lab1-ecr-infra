@@ -1,0 +1,11 @@
+template-file-path: template.yaml
+
+parameters:
+  GithubOrg: wodoame
+  GithubAppRepo: BEM13-lab1-ecr
+  Environment: production
+
+tags:
+  Project: bem13-lab1-ecr
+  ManagedBy: cloudformation-git-sync
+  Environment: production

@@ -1,0 +1,165 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: BEM13 Lab 1 - Private ECR repository and GitHub Actions OIDC role
+
+Parameters:
+  GithubOrg:
+    Type: String
+    Default: wodoame
+    Description: GitHub username or org that owns the application repository
+
+  GithubAppRepo:
+    Type: String
+    Default: BEM13-lab1-ecr
+    Description: GitHub repository name for the application code
+
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - development
+      - staging
+      - production
+
+Resources:
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: bem13-lab1-ecr
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: MUTABLE
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Expire untagged images older than 7 days",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": 7
+                },
+                "action": { "type": "expire" }
+              },
+              {
+                "rulePriority": 2,
+                "description": "Keep last 10 tagged images",
+                "selection": {
+                  "tagStatus": "tagged",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+      RepositoryPolicyText: !Sub
+        - |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "AllowGitHubActionsPush",
+                "Effect": "Allow",
+                "Principal": { "AWS": "${GitHubActionsRoleArn}" },
+                "Action": [
+                  "ecr:BatchCheckLayerAvailability",
+                  "ecr:CompleteLayerUpload",
+                  "ecr:InitiateLayerUpload",
+                  "ecr:PutImage",
+                  "ecr:UploadLayerPart"
+                ]
+              },
+              {
+                "Sid": "DenyAnonymousAccess",
+                "Effect": "Deny",
+                "Principal": "*",
+                "Action": "ecr:*",
+                "Condition": {
+                  "StringEquals": {
+                    "aws:PrincipalType": "Anonymous"
+                  }
+                }
+              }
+            ]
+          }
+        - GitHubActionsRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/bem13-lab1-github-actions-oidc-role
+      Tags:
+        - Key: Name
+          Value: bem13-lab1-ecr
+        - Key: Project
+          Value: bem13-lab1-ecr
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  GitHubActionsOIDCRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: bem13-lab1-github-actions-oidc-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GithubOrg}/${GithubAppRepo}:ref:refs/heads/main
+      Policies:
+        - PolicyName: ECRPushLeastPrivilege
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ECRAuthToken
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Sid: ECRPush
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                Resource: !GetAtt ECRRepository.Arn
+      Tags:
+        - Key: Project
+          Value: bem13-lab1-ecr
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+Outputs:
+  ECRRepositoryName:
+    Description: ECR repository name (set as GitHub variable ECR_REPOSITORY)
+    Value: !Ref ECRRepository
+    Export:
+      Name: bem13-lab1-ecr-repository-name
+
+  ECRRepositoryURI:
+    Description: ECR repository URI for docker push
+    Value: !GetAtt ECRRepository.RepositoryUri
+    Export:
+      Name: bem13-lab1-ecr-repository-uri
+
+  ECRRepositoryArn:
+    Description: ECR repository ARN
+    Value: !GetAtt ECRRepository.Arn
+    Export:
+      Name: bem13-lab1-ecr-repository-arn
+
+  GitHubActionsOIDCRoleArn:
+    Description: IAM role ARN for GitHub Actions (set as secret AWS_ROLE_ARN)
+    Value: !GetAtt GitHubActionsOIDCRole.Arn
+    Export:
+      Name: bem13-lab1-github-oidc-role-arn
