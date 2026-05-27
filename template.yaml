@@ -57,37 +57,23 @@ Resources:
               }
             ]
           }
-      RepositoryPolicyText: !Sub
-        - |
-          {
-            "Version": "2012-10-17",
-            "Statement": [
-              {
-                "Sid": "AllowGitHubActionsPush",
-                "Effect": "Allow",
-                "Principal": { "AWS": "${GitHubActionsRoleArn}" },
-                "Action": [
-                  "ecr:BatchCheckLayerAvailability",
-                  "ecr:CompleteLayerUpload",
-                  "ecr:InitiateLayerUpload",
-                  "ecr:PutImage",
-                  "ecr:UploadLayerPart"
-                ]
-              },
-              {
-                "Sid": "DenyAnonymousAccess",
-                "Effect": "Deny",
-                "Principal": "*",
-                "Action": "ecr:*",
-                "Condition": {
-                  "StringEquals": {
-                    "aws:PrincipalType": "Anonymous"
-                  }
+      RepositoryPolicyText: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "DenyAnonymousAccess",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "ecr:*",
+              "Condition": {
+                "StringEquals": {
+                  "aws:PrincipalType": "Anonymous"
                 }
               }
-            ]
-          }
-        - GitHubActionsRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/bem13-lab1-github-actions-oidc-role
+            }
+          ]
+        }
       Tags:
         - Key: Name
           Value: bem13-lab1-ecr
@@ -100,6 +86,7 @@ Resources:
 
   GitHubActionsOIDCRole:
     Type: AWS::IAM::Role
+    DependsOn: ECRRepository
     Properties:
       RoleName: bem13-lab1-github-actions-oidc-role
       AssumeRolePolicyDocument:
